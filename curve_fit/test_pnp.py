@@ -16,7 +16,12 @@ rvec = npzfile[names[2]]
 tvec = npzfile[names[3]]
 
 SE = np.zeros((4, 4))
-status = pose.solve_pnp(points_3d, points_2d, SE)
+cam_K = np.array(
+    [[718.856 ,   0.    , 607.1928],
+       [  0.    , 718.856 , 185.2157],
+       [  0.    ,   0.    ,   1.    ]]
+)
+status = pose.solve_pnp(points_3d, points_2d, cam_K, SE)
 print("status:", status)
 print(SE)
 print(rvec)
