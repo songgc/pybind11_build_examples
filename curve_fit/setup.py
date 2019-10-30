@@ -114,7 +114,8 @@ setup(
     author_email='songgc@gmail.co,',
     description='A test project using pybind11 and CMake',
     long_description='',
-    ext_modules=[CMakeExtension('curve_fit')],
+    ext_modules=[CMakeExtension('curve_fit'),
+                 CMakeExtension("pose_estimation")],
     cmdclass=dict(build_ext=CMakeBuild),
     zip_safe=False,
 )
