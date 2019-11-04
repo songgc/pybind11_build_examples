@@ -17,8 +17,8 @@ class BAGNCostFunctor : public ceres::SizedCostFunction<2, 6> {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    BAGNCostFunctor(const Eigen::Vector2d observed_p, const Eigen::Vector3d observed_P,
-                    const Eigen::Matrix3d camera_K) :
+    BAGNCostFunctor(const Eigen::Vector2d& observed_p, const Eigen::Vector3d& observed_P,
+                    const Eigen::Matrix3d& camera_K) :
             observed_p_(observed_p), observed_P_(observed_P), cam_K_(camera_K){}
 
     virtual ~BAGNCostFunctor() {}
@@ -27,6 +27,7 @@ public:
       double const* const* parameters, double *residuals, double **jacobians) const {
 
         Eigen::Map<const Eigen::Matrix<double,6,1>> T_se3(*parameters);
+        Eigen::Map<Eigen::Vector2d> res(residuals);
 
         se T_SE3 = se::exp(T_se3);
 
@@ -37,14 +38,12 @@ public:
         auto fy = cam_K_(1, 1);
         auto cx = cam_K_(0, 2);
         auto cy = cam_K_(1, 2);
-        Eigen::Vector2d residual =  observed_p_ - (cam_K_ * Pc).hnormalized();
-
-        residuals[0] = residual[0];
-        residuals[1] = residual[1];
+        res = observed_p_ - (cam_K_ * Pc).hnormalized();
 
         if(jacobians != NULL) {
 
-            Eigen::Matrix<double, 2, 6> J;
+            // avoid data copy
+            Eigen::Map<Eigen::Matrix<double, 2, 6, Eigen::RowMajor> > J(jacobians[0]);
 
             double x = Pc[0];
             double y = Pc[1];
@@ -66,13 +65,6 @@ public:
             J(1,3) =  fy+fy*y2/z2;
             J(1,4) = -fy*x*y/z2;
             J(1,5) = -fy*x/z;
-
-            int k=0;
-            for(int i=0; i<2; ++i) {
-                for(int j=0; j<6; ++j) {
-                    jacobians[0][k++] = J(i,j);
-                }
-            }
         }
 
         return true;
@@ -92,11 +84,14 @@ int solve_pnp(py::array_t<double> points_3d,
   auto p3ds = points_3d.unchecked<2>();
   auto p2ds = points_2d.unchecked<2>();
   auto cam = camera_K.unchecked<2>();
+//   auto cam_buf = camera_K.request();
+//   double *cam_ptr = (double *) cam_buf.ptr;
+//   Eigen::Map<Eigen::Matrix3d> cam_K(cam_ptr);
   Eigen::Matrix3d cam_K;
   for (auto i = 0; i < 3; ++i)
     for (auto j = 0; j < 3; ++j)
       cam_K(i, j) = cam(i, j);
-    //
+
 //   std::cout << cam_K << "\n";
 //   Eigen::Matrix3d cam_K;
 //   double fx = 718.856, fy = 718.856, cx = 607.1928, cy = 185.2157;
@@ -122,6 +117,7 @@ int solve_pnp(py::array_t<double> points_3d,
 //   options.sparse_linear_algebra_library_type = ceres::SUITE_SPARSE;
   options.minimizer_type = ceres::TRUST_REGION;
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+  options.num_threads = 1;
 //   options.trust_region_strategy_type = ceres::DOGLEG;
 //   options.minimizer_progress_to_stdout = true;
 //   options.dogleg_type = ceres::SUBSPACE_DOGLEG;
@@ -129,9 +125,9 @@ int solve_pnp(py::array_t<double> points_3d,
 
   ceres::Solver::Summary summary;
   ceres::Solve(options, &problem, &summary);
-  auto sem_result = se::exp(se3).matrix();
+  auto sem_result = se::exp(se3).matrix3x4();
    
-  for (auto i = 0; i < 4; ++i) 
+  for (auto i = 0; i < 3; ++i) 
     for (auto j = 0; j < 4; ++j)
       sem(i, j) = sem_result(i, j);
   
